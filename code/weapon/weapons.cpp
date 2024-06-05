@@ -1749,6 +1749,56 @@ int parse_weapon(int subtype, bool replace, const char *filename)
 			Error(LOCATION, "Illegal homing type = %s.\nMust be HEAT, ASPECT or JAVELIN.\n", temp_type);
 		}
 
+		if (optional_string("$Homing Inaccuracy Radius:")) {
+			stuff_float(&wip->homing_inaccuracy_radius);
+
+			if (optional_string("+Homing Inaccuracy Radius over Proximity to Target Curve:")) {
+				SCP_string curve_name;
+				stuff_string(curve_name, F_NAME);
+				wip->inaccuracy_radius_over_proximity_curve_idx = curve_get_by_name(curve_name);
+				if (wip->inaccuracy_radius_over_proximity_curve_idx < 0)
+					Warning(LOCATION, "Unrecognized homing inaccuracy radius curve '%s' for weapon %s", curve_name.c_str(), wip->name);
+			}
+
+			if (optional_string("+X Inaccuracy over Proximity to Target Curve:")) {
+				SCP_string curve_name;
+				stuff_string(curve_name, F_NAME);
+				wip->x_inaccuracy_over_proximity_curve_idx = curve_get_by_name(curve_name);
+				if (wip->x_inaccuracy_over_proximity_curve_idx < 0)
+					Warning(LOCATION, "Unrecognized x homing inaccuracy curve '%s' for weapon %s", curve_name.c_str(), wip->name);
+			}
+
+			if (optional_string("+Y Inaccuracy over Proximity to Target Curve:")) {
+				SCP_string curve_name;
+				stuff_string(curve_name, F_NAME);
+				wip->y_inaccuracy_over_proximity_curve_idx = curve_get_by_name(curve_name);
+				if (wip->y_inaccuracy_over_proximity_curve_idx < 0)
+					Warning(LOCATION, "Unrecognized y homing inaccuracy curve '%s' for weapon %s", curve_name.c_str(), wip->name);
+			}
+
+			if (optional_string("+Z Inaccuracy over Proximity to Target Curve:")) {
+				SCP_string curve_name;
+				stuff_string(curve_name, F_NAME);
+				wip->z_inaccuracy_over_proximity_curve_idx = curve_get_by_name(curve_name);
+				if (wip->z_inaccuracy_over_proximity_curve_idx < 0)
+					Warning(LOCATION, "Unrecognized z homing inaccuracy curve '%s' for weapon %s", curve_name.c_str(), wip->name);
+			}
+
+			parse_optional_bool_into("+Randomize Inaccuracy:", &wip->randomize_inaccuracy);
+
+			parse_optional_float_into("+Inaccuracy Random Traversal Speed:", &wip->inaccuracy_traversal_speed);
+
+			if (optional_string("+Inaccuracy Traversal Speed over Proximity to Target Curve:")) {
+				SCP_string curve_name;
+				stuff_string(curve_name, F_NAME);
+				wip->traversal_speed_over_proximity_curve_idx = curve_get_by_name(curve_name);
+				if (wip->traversal_speed_over_proximity_curve_idx < 0)
+					Warning(LOCATION, "Unrecognized inaccuracy traversal speed curve '%s' for weapon %s", curve_name.c_str(), wip->name);
+			}
+
+			parse_optional_float_into("+Average Traversal Interval:", &wip->inaccuracy_traversal_interval);
+		}
+
 		// handle homing restrictions
 		if (optional_string("+Ship Types:")) {
 			SCP_vector<SCP_string> temp_names;
@@ -5453,6 +5503,14 @@ void weapon_home(object *obj, int num, float frame_time)
 					Assert(!vm_is_vec_nan(&wp->homing_pos));
 				} else
 					target_pos = wp->homing_pos;
+
+				if (wip->homing_inaccuracy_radius > 0.0f) {
+					vec3d homing_offset;
+					
+					if (rand_chance(flFrametime, 1.0f/wip->inaccuracy_traversal_interval)) {
+
+					}
+				}
 			}
 		}
 
@@ -8819,7 +8877,7 @@ void weapon_render(object* obj, model_draw_list *scene)
 				vm_vec_scale_add(&tailp, &obj->pos, &rotated_offset, laser_length);
 				vm_vec_scale_add(&headp, &tailp, &obj->orient.vec.fvec, laser_length);
 
-			float main_bitmap_alpha_mult = 1.0;
+			float main_bitmap_alpha_mult = 1.0f;
 
 			if (wip->laser_bitmap.first_frame >= 0) {					
 				gr_set_color_fast(&wip->laser_color_1);
