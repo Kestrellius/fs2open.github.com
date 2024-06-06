@@ -97,6 +97,11 @@ struct homing_cache_info {
 	bool skip_future_refinements;
 };
 
+typedef struct homing_inaccuracy_info {
+	vec3d homing_offset;
+	vec3d traversal_dir;
+} homing_inaccuracy_info;
+
 typedef struct weapon {
 	int		weapon_info_index;			// index into weapon_info array
 	int		objnum;							// object number for this weapon
@@ -137,6 +142,8 @@ typedef struct weapon {
 	vec3d	big_attack_point;				//	Target-relative location of attack point.
 
 	std::unique_ptr<homing_cache_info> homing_cache_ptr;
+
+	std::unique_ptr<homing_inaccuracy_info>		homing_inaccuracy_info_ptr;
 
 	SCP_vector<int>* cmeasure_ignore_list;
 	int		cmeasure_timer;
@@ -502,15 +509,15 @@ struct weapon_info
 	// Seeker strength - for countermeasures overhaul.
 	float seeker_strength;
 
-	float homing_inaccuracy_radius;
-	int inaccuracy_radius_over_proximity_curve_idx;
-	int x_inaccuracy_over_proximity_curve_idx;
-	int y_inaccuracy_over_proximity_curve_idx;
-	int z_inaccuracy_over_proximity_curve_idx;
-	bool randomize_inaccuracy;
-	float inaccuracy_traversal_speed;
-	int traversal_speed_over_proximity_curve_idx;
-	float inaccuracy_traversal_interval;
+	float homing_pos_offset_radius;
+	int homing_offset_radius_over_proximity_curve_idx;
+	int x_homing_offset_over_proximity_curve_idx;
+	int y_homing_offset_over_proximity_curve_idx;
+	int z_homing_offset_over_proximity_curve_idx;
+	bool randomize_homing_offset;
+	::util::UniformFloatRange homing_offset_traversal_speed;
+	int homing_offset_traversal_speed_over_proximity_curve_idx;
+	float homing_offset_traversal_redirect_interval;
 
 	gamesnd_id pre_launch_snd;
 	int	pre_launch_snd_min_interval;	//Minimum interval in ms between the last time the pre-launch sound was played and the next time it can play, as a limiter in case the player is pumping the trigger
