@@ -604,6 +604,10 @@ void vm_match_bank(vec3d* out_rvec, const vec3d* goal_fvec, const matrix* match_
 // derived by Asteroth from our AI code
 void vm_interpolate_matrices(matrix* out_orient, const matrix* curr_orient, const matrix* goal_orient, float t);
 
+// spherical linear interpolation between two vectors. Uses uvec as the rotation axis if src1 and src2 are inline, random otherwise.
+// Both inputs are expected to be normalized
+void vm_vec_slerp(vec3d* out, const vec3d* src1, const vec3d* src2, float t, const vec3d* uvec = nullptr);
+
 // generates a well distributed quasi-random position in a -1 to 1 cube
 // the caller must provide and increment the seed for each call for proper results
 // if being used to fill a space, offset may be needed to properly 'glue together' generated

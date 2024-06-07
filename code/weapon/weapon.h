@@ -510,14 +510,18 @@ struct weapon_info
 	float seeker_strength;
 
 	float homing_pos_offset_radius;
-	int homing_offset_radius_over_proximity_curve_idx;
-	int x_homing_offset_over_proximity_curve_idx;
-	int y_homing_offset_over_proximity_curve_idx;
-	int z_homing_offset_over_proximity_curve_idx;
 	bool randomize_homing_offset;
 	::util::UniformFloatRange homing_offset_traversal_speed;
 	int homing_offset_traversal_speed_over_proximity_curve_idx;
 	float homing_offset_traversal_redirect_interval;
+	int homing_offset_radius_over_proximity_curve_idx;
+	::util::UniformFloatRange radius_prox_curve_scaling_factor;
+	::util::UniformFloatRange radius_prox_curve_translation;
+	int x_homing_offset_over_proximity_curve_idx;
+	int y_homing_offset_over_proximity_curve_idx;
+	int z_homing_offset_over_proximity_curve_idx;
+	::util::UniformFloatRange axis_prox_curve_scaling_factor;
+	::util::UniformFloatRange axis_prox_curve_translation;
 
 	gamesnd_id pre_launch_snd;
 	int	pre_launch_snd_min_interval;	//Minimum interval in ms between the last time the pre-launch sound was played and the next time it can play, as a limiter in case the player is pumping the trigger
