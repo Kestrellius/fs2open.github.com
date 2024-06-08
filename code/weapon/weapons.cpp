@@ -5692,20 +5692,21 @@ void weapon_home(object *obj, int num, float frame_time)
 					// switch to a new random traversal direction if it's time to do that
 					if (rand_chance(flFrametime, 1.0f/wip->homing_offset_traversal_redirect_interval)) {
 						vm_vec_random_in_sphere(&hiip->traversal_dir, &vmd_zero_vector, 1.0f, true);
+						//vm_vec_random_in_sphere(&hiip->homing_offset, &vmd_zero_vector, wip->homing_pos_offset_radius, false);
 					}
 
 					// we don't want the homing offset to get outside the radius when it's traversing
 					// so, the further it gets toward the radius, the more we rotate it toward the center, capping out at 90 degrees
-					float amount_to_rotate = vm_vec_mag(&hiip->homing_offset)/(wip->homing_pos_offset_radius);
-
-					CLAMP(amount_to_rotate, 0.0f, 1.0f);
-
-					amount_to_rotate /= 2.0f;
-
-					vec3d toward_center;
-					vm_vec_normalized_dir(&toward_center, &vmd_zero_vector, &hiip->homing_offset);
-
-					vm_vec_slerp(&hiip->traversal_dir, &hiip->traversal_dir, &toward_center, amount_to_rotate);
+					//float amount_to_rotate = vm_vec_mag(&hiip->homing_offset)/(wip->homing_pos_offset_radius);
+//
+					//CLAMP(amount_to_rotate, 0.0f, 1.0f);
+//
+					//amount_to_rotate /= 2.0f;
+//
+					//vec3d toward_center;
+					//vm_vec_normalized_dir(&toward_center, &vmd_zero_vector, &hiip->homing_offset);
+//
+					//vm_vec_slerp(&hiip->traversal_dir, &hiip->traversal_dir, &toward_center, amount_to_rotate);
 
 					float speed_mult = 1.0f;
 					if (wip->homing_offset_traversal_speed_over_proximity_curve_idx >= 0) {
@@ -5715,6 +5716,10 @@ void weapon_home(object *obj, int num, float frame_time)
 
 					// traverse the offset point along the traversal direction
 					vm_vec_scale_add2(&hiip->homing_offset, &hiip->traversal_dir, traversal_dist);
+
+					CLAMP(hiip->homing_offset.xyz.x, -wip->homing_pos_offset_radius, wip->homing_pos_offset_radius);
+					CLAMP(hiip->homing_offset.xyz.y, -wip->homing_pos_offset_radius, wip->homing_pos_offset_radius);
+					CLAMP(hiip->homing_offset.xyz.z, -wip->homing_pos_offset_radius, wip->homing_pos_offset_radius);
 
 					// get the offset we'll actually use by scaling by the various curves
 					// we don't store the curve-modified value in the homing_inaccuracy_info, because we want to be able to do our base calculations independently of proximity curves
@@ -5740,11 +5745,12 @@ void weapon_home(object *obj, int num, float frame_time)
 
 					// here we do some stuff to rotate the offset so that it's facing the target from the weapon's current position
 					// (we don't just use the weapon's orientation, because the weapon might be facing in all sorts of directions)
-					vec3d weapon_to_target_dir;
-					vm_vec_normalized_dir(&weapon_to_target_dir, &hobjp->pos, &obj->pos);
-					matrix weapon_to_target_matrix;
-					vm_vector_2_matrix_norm(&weapon_to_target_matrix, &weapon_to_target_dir);
-					vm_vec_unrotate(&homing_offset_curve_modified, &homing_offset_curve_modified, &weapon_to_target_matrix);
+					//vec3d weapon_to_target_dir;
+					//vm_vec_normalized_dir(&weapon_to_target_dir, &hobjp->pos, &obj->pos);
+					//matrix weapon_to_target_matrix;
+					//vm_vector_2_matrix_norm(&weapon_to_target_matrix, &weapon_to_target_dir);
+					//vm_vec_unrotate(&homing_offset_curve_modified, &homing_offset_curve_modified, &weapon_to_target_matrix);
+					vm_vec_unrotate(&homing_offset_curve_modified, &homing_offset_curve_modified, &hobjp->orient);
 
 					volatile bool nan = fl_is_nan(homing_offset_curve_modified.xyz.x) ||
 										fl_is_nan(homing_offset_curve_modified.xyz.y) ||
