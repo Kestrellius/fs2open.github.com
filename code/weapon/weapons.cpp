@@ -1762,18 +1762,39 @@ int parse_weapon(int subtype, bool replace, const char *filename)
 			if (optional_string("+Offset Traversal Speed over Proximity to Target Curve:")) {
 				SCP_string curve_name;
 				stuff_string(curve_name, F_NAME);
-				wip->homing_offset_traversal_speed_over_proximity_curve_idx = curve_get_by_name(curve_name);
-				if (wip->homing_offset_traversal_speed_over_proximity_curve_idx < 0)
+				wip->homing_offset_traversal_speed_prox_curve_idx = curve_get_by_name(curve_name);
+				if (wip->homing_offset_traversal_speed_prox_curve_idx < 0)
 					Warning(LOCATION, "Unrecognized offset traversal speed curve '%s' for weapon %s", curve_name.c_str(), wip->name);
 			}
 
 			parse_optional_float_into("+Traversal Redirect Interval:", &wip->homing_offset_traversal_redirect_interval);
 
+			if (optional_string("+Traversal Recentering over Offset Magnitude Curve:")) {
+				SCP_string curve_name;
+				stuff_string(curve_name, F_NAME);
+				wip->homing_offset_traversal_centering_curve_idx = curve_get_by_name(curve_name);
+				if (wip->homing_offset_traversal_centering_curve_idx < 0)
+					Warning(LOCATION, "Unrecognized traversal recentering curve '%s' for weapon %s", curve_name.c_str(), wip->name);
+			}
+
+			if (optional_string("+Localized Traversal Limit Radius:")) {
+				 wip->homing_offset_traversal_local_radius = ::util::parseUniformRange<float>();
+				 // put a warning here if the min or max value is below zero
+			}
+
+			if (optional_string("+Localized Traversal Limit Radius over Proximity to Target Curve:")) {
+				SCP_string curve_name;
+				stuff_string(curve_name, F_NAME);
+				wip->homing_offset_traversal_local_radius_prox_curve_idx = curve_get_by_name(curve_name);
+				if (wip->homing_offset_traversal_local_radius_prox_curve_idx < 0)
+					Warning(LOCATION, "Unrecognized traversal radius curve '%s' for weapon %s", curve_name.c_str(), wip->name);
+			}
+
 			if (optional_string("+Homing Offset Multiplier over Proximity to Target Curve:")) {
 				SCP_string curve_name;
 				stuff_string(curve_name, F_NAME);
-				wip->homing_offset_radius_over_proximity_curve_idx = curve_get_by_name(curve_name);
-				if (wip->homing_offset_radius_over_proximity_curve_idx < 0)
+				wip->homing_offset_radius_prox_curve_idx = curve_get_by_name(curve_name);
+				if (wip->homing_offset_radius_prox_curve_idx < 0)
 					Warning(LOCATION, "Unrecognized homing offset curve '%s' for weapon %s", curve_name.c_str(), wip->name);
 			}
 
@@ -1788,24 +1809,24 @@ int parse_weapon(int subtype, bool replace, const char *filename)
 			if (optional_string("+X Offset over Proximity to Target Curve:")) {
 				SCP_string curve_name;
 				stuff_string(curve_name, F_NAME);
-				wip->x_homing_offset_over_proximity_curve_idx = curve_get_by_name(curve_name);
-				if (wip->x_homing_offset_over_proximity_curve_idx < 0)
+				wip->x_homing_offset_prox_curve_idx = curve_get_by_name(curve_name);
+				if (wip->x_homing_offset_prox_curve_idx < 0)
 					Warning(LOCATION, "Unrecognized x homing offset curve '%s' for weapon %s", curve_name.c_str(), wip->name);
 			}
 
 			if (optional_string("+Y Offset over Proximity to Target Curve:")) {
 				SCP_string curve_name;
 				stuff_string(curve_name, F_NAME);
-				wip->y_homing_offset_over_proximity_curve_idx = curve_get_by_name(curve_name);
-				if (wip->y_homing_offset_over_proximity_curve_idx < 0)
+				wip->y_homing_offset_prox_curve_idx = curve_get_by_name(curve_name);
+				if (wip->y_homing_offset_prox_curve_idx < 0)
 					Warning(LOCATION, "Unrecognized y homing offset curve '%s' for weapon %s", curve_name.c_str(), wip->name);
 			}
 
 			if (optional_string("+Z Offset over Proximity to Target Curve:")) {
 				SCP_string curve_name;
 				stuff_string(curve_name, F_NAME);
-				wip->z_homing_offset_over_proximity_curve_idx = curve_get_by_name(curve_name);
-				if (wip->z_homing_offset_over_proximity_curve_idx < 0)
+				wip->z_homing_offset_prox_curve_idx = curve_get_by_name(curve_name);
+				if (wip->z_homing_offset_prox_curve_idx < 0)
 					Warning(LOCATION, "Unrecognized z homing offset curve '%s' for weapon %s", curve_name.c_str(), wip->name);
 			}
 
@@ -1815,6 +1836,21 @@ int parse_weapon(int subtype, bool replace, const char *filename)
 
 			if (optional_string("+Axis Proximity Curve Translation:")) {
 				 wip->radius_prox_curve_translation = ::util::parseUniformRange<float>();
+			}
+
+			if (optional_string("+Orientation:")) {
+				if (!stricmp(temp_type, NOX("WEAPON"))) {
+						wip->homing_offset_orientation = HomingOffsetOrientation::WEAPON;
+					}
+				else if (!stricmp(temp_type, NOX("WEAPON INITIAL"))) {
+						wip->homing_offset_orientation = HomingOffsetOrientation::WEAPON_INITIAL;
+					}
+				else if (!stricmp(temp_type, NOX("TARGET"))) {
+						wip->homing_offset_orientation = HomingOffsetOrientation::TARGET;
+					}
+				else {
+					Warning(LOCATION, "Unrecognized homing offset orientation for weapon %s!\n Valid orentiations are: 'WEAPON', 'WEAPON INITIAL', 'TARGET'.", wip->name);
+				}
 			}
 		}
 
@@ -5534,34 +5570,46 @@ void weapon_home(object *obj, int num, float frame_time)
 					// switch to a new random traversal direction if it's time to do that
 					if (rand_chance(flFrametime, 1.0f/wip->homing_offset_traversal_redirect_interval)) {
 						vm_vec_random_in_sphere(&hiip->traversal_dir, &vmd_zero_vector, 1.0f, true);
-						//vm_vec_random_in_sphere(&hiip->homing_offset, &vmd_zero_vector, wip->homing_pos_offset_radius, false);
+					}
+
+					// if we're doing traversal localized to the initial offset, we use the initial offset as our center position for traversal
+					// otherwise, if we're doing traversal over the whole offset range, we just use zero-zero-zero as our center, and the overall radius as our traversal limit
+					vec3d traversal_center;
+					float traversal_limit_radius;
+
+					if (hiip->traversal_radius >= 0.0f) {
+						traversal_center = hiip->initial_offset;
+						traversal_limit_radius = hiip->traversal_radius;
+					} else {
+						traversal_center = vmd_zero_vector;
+						traversal_limit_radius = wip->homing_pos_offset_radius;
 					}
 
 					// we don't want the homing offset to get outside the radius when it's traversing
 					// so, the further it gets toward the radius, the more we rotate it toward the center, capping out at 90 degrees
-					//float amount_to_rotate = vm_vec_mag(&hiip->homing_offset)/(wip->homing_pos_offset_radius);
-//
-					//CLAMP(amount_to_rotate, 0.0f, 1.0f);
-//
-					//amount_to_rotate /= 2.0f;
-//
-					//vec3d toward_center;
-					//vm_vec_normalized_dir(&toward_center, &vmd_zero_vector, &hiip->homing_offset);
-//
-					//vm_vec_slerp(&hiip->traversal_dir, &hiip->traversal_dir, &toward_center, amount_to_rotate);
+					float amount_to_rotate = vm_vec_dist(&hiip->homing_offset, &traversal_center)/(traversal_limit_radius);
+
+					CLAMP(amount_to_rotate, 0.0f, 1.0f);
+
+					if (wip->homing_offset_traversal_centering_curve_idx >= 0) {
+						amount_to_rotate = Curves[wip->homing_offset_traversal_centering_curve_idx].GetValue(amount_to_rotate);
+					}
+
+					amount_to_rotate *= 0.5f;
+
+					vec3d toward_center;
+					vm_vec_normalized_dir(&toward_center, &traversal_center, &hiip->homing_offset);
+
+					vm_vec_slerp(&hiip->traversal_dir, &hiip->traversal_dir, &toward_center, amount_to_rotate);
 
 					float speed_mult = 1.0f;
-					if (wip->homing_offset_traversal_speed_over_proximity_curve_idx >= 0) {
-						speed_mult = Curves[wip->homing_offset_traversal_speed_over_proximity_curve_idx].GetValue(1.0f - dist);
+					if (wip->homing_offset_traversal_speed_prox_curve_idx >= 0) {
+						speed_mult = Curves[wip->homing_offset_traversal_speed_prox_curve_idx].GetValue(1.0f - dist);
 					}
 					float traversal_dist = wip->homing_offset_traversal_speed.next() * wip->homing_pos_offset_radius * speed_mult * flFrametime;
 
 					// traverse the offset point along the traversal direction
 					vm_vec_scale_add2(&hiip->homing_offset, &hiip->traversal_dir, traversal_dist);
-
-					CLAMP(hiip->homing_offset.xyz.x, -wip->homing_pos_offset_radius, wip->homing_pos_offset_radius);
-					CLAMP(hiip->homing_offset.xyz.y, -wip->homing_pos_offset_radius, wip->homing_pos_offset_radius);
-					CLAMP(hiip->homing_offset.xyz.z, -wip->homing_pos_offset_radius, wip->homing_pos_offset_radius);
 
 					// get the offset we'll actually use by scaling by the various curves
 					// we don't store the curve-modified value in the homing_inaccuracy_info, because we want to be able to do our base calculations independently of proximity curves
@@ -5569,34 +5617,38 @@ void weapon_home(object *obj, int num, float frame_time)
 
 					float prox_for_radius = 1.0f - std::fmod(std::fmod(dist + wip->radius_prox_curve_translation.next(), 1.0f)/wip->radius_prox_curve_scaling_factor.next(), 1.0f);
 
-					if (wip->homing_offset_radius_over_proximity_curve_idx >= 0) {
-						homing_offset_curve_modified = hiip->homing_offset * Curves[wip->homing_offset_radius_over_proximity_curve_idx].GetValue(prox_for_radius);
+					if (wip->homing_offset_radius_prox_curve_idx >= 0) {
+						homing_offset_curve_modified = hiip->homing_offset * Curves[wip->homing_offset_radius_prox_curve_idx].GetValue(prox_for_radius);
 					}
 
 					float prox_for_axis = 1.0f - std::fmod(std::fmod(dist + wip->axis_prox_curve_translation.next(), 1.0f)/wip->axis_prox_curve_scaling_factor.next(), 1.0f);
 
-					if (wip->x_homing_offset_over_proximity_curve_idx >= 0) {
-						homing_offset_curve_modified.xyz.x *= Curves[wip->x_homing_offset_over_proximity_curve_idx].GetValue(prox_for_axis);
+					if (wip->x_homing_offset_prox_curve_idx >= 0) {
+						homing_offset_curve_modified.xyz.x *= Curves[wip->x_homing_offset_prox_curve_idx].GetValue(prox_for_axis);
 					}
-					if (wip->y_homing_offset_over_proximity_curve_idx >= 0) {
-						homing_offset_curve_modified.xyz.y *= Curves[wip->y_homing_offset_over_proximity_curve_idx].GetValue(prox_for_axis);
+					if (wip->y_homing_offset_prox_curve_idx >= 0) {
+						homing_offset_curve_modified.xyz.y *= Curves[wip->y_homing_offset_prox_curve_idx].GetValue(prox_for_axis);
 					}
-					if (wip->z_homing_offset_over_proximity_curve_idx >= 0) {
-						homing_offset_curve_modified.xyz.z *= Curves[wip->z_homing_offset_over_proximity_curve_idx].GetValue(prox_for_axis);
+					if (wip->z_homing_offset_prox_curve_idx >= 0) {
+						homing_offset_curve_modified.xyz.z *= Curves[wip->z_homing_offset_prox_curve_idx].GetValue(prox_for_axis);
 					}
 
-					// here we do some stuff to rotate the offset so that it's facing the target from the weapon's current position
-					// (we don't just use the weapon's orientation, because the weapon might be facing in all sorts of directions)
-					//vec3d weapon_to_target_dir;
-					//vm_vec_normalized_dir(&weapon_to_target_dir, &hobjp->pos, &obj->pos);
-					//matrix weapon_to_target_matrix;
-					//vm_vector_2_matrix_norm(&weapon_to_target_matrix, &weapon_to_target_dir);
-					//vm_vec_unrotate(&homing_offset_curve_modified, &homing_offset_curve_modified, &weapon_to_target_matrix);
-					vm_vec_unrotate(&homing_offset_curve_modified, &homing_offset_curve_modified, &hobjp->orient);
+					// set the coordinates to the right reference frame
+					matrix offset_orientation;
 
-					volatile bool nan = fl_is_nan(homing_offset_curve_modified.xyz.x) ||
-										fl_is_nan(homing_offset_curve_modified.xyz.y) ||
-										fl_is_nan(homing_offset_curve_modified.xyz.z);
+					switch (wip->homing_offset_orientation) {
+						case HomingOffsetOrientation::WEAPON:
+							offset_orientation = obj->orient;
+							break;
+						case HomingOffsetOrientation::WEAPON_INITIAL:
+							offset_orientation = hiip->weapon_initial_facing;
+							break;
+						case HomingOffsetOrientation::TARGET:
+							offset_orientation = hobjp->orient;
+							break;
+					}
+
+					vm_vec_unrotate(&homing_offset_curve_modified, &homing_offset_curve_modified, &offset_orientation);
 
 					target_pos += homing_offset_curve_modified;
 				}
@@ -6661,12 +6713,15 @@ int weapon_create( const vec3d *pos, const matrix *porient, int weapon_type, int
 	if ( wip->homing_pos_offset_radius > 0.0f) {
 		wp->homing_inaccuracy_info_ptr.reset(new homing_inaccuracy_info);
 		homing_inaccuracy_info* hiip = wp->homing_inaccuracy_info_ptr.get();
+		hiip->weapon_initial_facing = Objects[wp->objnum].orient;
 		if (wip->randomize_homing_offset) {
 			vm_vec_random_in_sphere(&hiip->homing_offset, &vmd_zero_vector, wip->homing_pos_offset_radius, false);
 		} else {
 			hiip->homing_offset = vm_vec_new(wip->homing_pos_offset_radius, wip->homing_pos_offset_radius, wip->homing_pos_offset_radius);
 		}
+		hiip->initial_offset = hiip->homing_offset;
 		vm_vec_random_in_sphere(&hiip->traversal_dir, &vmd_zero_vector, 1.0f, true);
+		hiip->traversal_radius = wip->homing_offset_traversal_local_radius.next();
 	} 	
 
 	// if this is a particle spewing weapon, setup some stuff
@@ -9448,14 +9503,17 @@ void weapon_info::reset()
 	this->homing_pos_offset_radius = 0.0f;
 	this->randomize_homing_offset = true;
 	this->homing_offset_traversal_speed = ::util::UniformFloatRange(0.0f);
-	this->homing_offset_traversal_speed_over_proximity_curve_idx = -1;
+	this->homing_offset_traversal_speed_prox_curve_idx = -1;
 	this->homing_offset_traversal_redirect_interval = 10.0f;
-	this->homing_offset_radius_over_proximity_curve_idx = -1;
+	this->homing_offset_traversal_centering_curve_idx = -1;
+	this->homing_offset_traversal_local_radius = ::util::UniformFloatRange(-1.0f);
+	this->homing_offset_traversal_local_radius_prox_curve_idx = -1;
+	this->homing_offset_radius_prox_curve_idx = -1;
 	this->radius_prox_curve_scaling_factor = ::util::UniformFloatRange(1.0f);
 	this->radius_prox_curve_translation = ::util::UniformFloatRange(0.0f);
-	this->x_homing_offset_over_proximity_curve_idx = -1;
-	this->y_homing_offset_over_proximity_curve_idx = -1;
-	this->z_homing_offset_over_proximity_curve_idx = -1;
+	this->x_homing_offset_prox_curve_idx = -1;
+	this->y_homing_offset_prox_curve_idx = -1;
+	this->z_homing_offset_prox_curve_idx = -1;
 	this->axis_prox_curve_scaling_factor = ::util::UniformFloatRange(1.0f);
 	this->axis_prox_curve_translation = ::util::UniformFloatRange(0.0f);
 

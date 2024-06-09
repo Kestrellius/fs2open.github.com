@@ -3041,7 +3041,7 @@ void vm_vec_slerp(vec3d* out, const vec3d* src1, const vec3d* src2, float t, con
     float cos_theta = vm_vec_dot(src1, src2);
 
     vec3d actual_uvec;
-	if (cos_theta >= -0.999f && cos_theta <= 0.999f) {
+	if (cos_theta >= -0.99f && cos_theta <= 0.99f) {
         vm_vec_cross(&actual_uvec, src1, src2);
     }
     else if (uvec != nullptr) {
@@ -3049,10 +3049,11 @@ void vm_vec_slerp(vec3d* out, const vec3d* src1, const vec3d* src2, float t, con
     }
     else {
 		vec3d random;
+		float dot_random;
 		do {
 			vm_vec_random_in_sphere(&random, &vmd_zero_vector, 1, true);
-			float dot_random = vm_vec_dot(&random, src2);
-		} while (cos_theta >= -0.999f && cos_theta <= 0.999f);
+			dot_random = vm_vec_dot(&random, src2);
+		} while (dot_random >= -0.99f && dot_random <= 0.99f);
 		vm_vec_cross(&actual_uvec, &random, src2);
     }
 
@@ -3061,7 +3062,7 @@ void vm_vec_slerp(vec3d* out, const vec3d* src1, const vec3d* src2, float t, con
     matrix rot;
     vm_quaternion_rotate(&rot, acos(cos_theta) * t, &actual_uvec);
 
-    *out = rot * *src1;
+    vm_vec_unrotate(out, src1, &rot);
 }
 
 std::ostream& operator<<(std::ostream& os, const vec3d& vec)
