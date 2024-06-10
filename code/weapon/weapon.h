@@ -97,18 +97,44 @@ struct homing_cache_info {
 	bool skip_future_refinements;
 };
 
-typedef struct homing_inaccuracy_info {
+typedef struct homing_offset_info {
 	matrix weapon_initial_facing;
 	vec3d initial_offset;
 	vec3d homing_offset;
 	vec3d traversal_dir;
 	float traversal_radius;
-} homing_inaccuracy_info;
+	float axis_curve_radius;
+} homing_offset_info;
 
 enum class HomingOffsetOrientation {
 	WEAPON,
 	WEAPON_INITIAL,
 	TARGET
+};
+
+enum HomingOffsetCurveParameter {
+	// inputs
+	LIFETIME,
+	PROXIMITY_TO_TARGET,
+	HOMING_TRAVERSAL_DISTANCE_FROM_CENTER,
+	// outputs
+	HOMING_X_OFFSET_MULT,
+	HOMING_Y_OFFSET_MULT,
+	HOMING_Z_OFFSET_MULT,
+	HOMING_TRAVERSAL_SPEED_MULT,
+	HOMING_TRAVERSAL_RADIUS_MULT,
+	HOMING_TRAVERSAL_RECENTERING,
+	HOMING_AXIS_CURVE_RADIUS_MULT,
+	HOMING_OFFSET_MAGNITUDE_MULT,
+};
+
+struct HomingOffsetModularCurve {
+public :
+	HomingOffsetCurveParameter input;
+	HomingOffsetCurveParameter output;
+	int curve_idx;
+	::util::UniformFloatRange scaling_factor;
+	::util::UniformFloatRange translation;
 };
 
 typedef struct weapon {
@@ -149,10 +175,10 @@ typedef struct weapon {
 
 	int		pick_big_attack_point_timestamp;	//	Timestamp at which to pick a new point to attack.
 	vec3d	big_attack_point;				//	Target-relative location of attack point.
-
+	
 	std::unique_ptr<homing_cache_info> homing_cache_ptr;
 
-	std::unique_ptr<homing_inaccuracy_info>		homing_inaccuracy_info_ptr;
+	std::unique_ptr<homing_offset_info>		homing_inaccuracy_info_ptr;
 
 	SCP_vector<int>* cmeasure_ignore_list;
 	int		cmeasure_timer;
@@ -519,22 +545,16 @@ struct weapon_info
 	float seeker_strength;
 
 	float homing_pos_offset_radius;
+	bool scale_by_target_radius;
 	bool randomize_homing_offset;
 	::util::UniformFloatRange homing_offset_traversal_speed;
-	int homing_offset_traversal_speed_prox_curve_idx;
 	float homing_offset_traversal_redirect_interval;
-	int homing_offset_traversal_centering_curve_idx;
+	bool localize_homing_traversal;
 	::util::UniformFloatRange homing_offset_traversal_local_radius;
-	int homing_offset_traversal_local_radius_prox_curve_idx;
-	int homing_offset_radius_prox_curve_idx;
-	::util::UniformFloatRange radius_prox_curve_scaling_factor;
-	::util::UniformFloatRange radius_prox_curve_translation;
-	int x_homing_offset_prox_curve_idx;
-	int y_homing_offset_prox_curve_idx;
-	int z_homing_offset_prox_curve_idx;
-	::util::UniformFloatRange axis_prox_curve_scaling_factor;
-	::util::UniformFloatRange axis_prox_curve_translation;
+	bool localize_homing_axis_curves;
+	::util::UniformFloatRange homing_offset_axis_curve_local_radius;
 	HomingOffsetOrientation homing_offset_orientation;
+	SCP_vector<HomingOffsetModularCurve> homing_offset_curves;
 
 
 	gamesnd_id pre_launch_snd;
