@@ -1769,7 +1769,7 @@ int parse_weapon(int subtype, bool replace, const char *filename)
 				 wip->homing_offset_traversal_local_radius = ::util::parseUniformRange<float>();
 			}
 
-			parse_optional_bool_into("Localize Axis Curves to Initial Homing Offset:", &wip->localize_homing_axis_curves);
+			parse_optional_bool_into("+Localize Axis Curves to Initial Homing Offset:", &wip->localize_homing_axis_curves);
 
 			if (optional_string("+Localized Axis Curve Radius:")) {
 				 wip->homing_offset_axis_curve_local_radius = ::util::parseUniformRange<float>();
@@ -1798,10 +1798,12 @@ int parse_weapon(int subtype, bool replace, const char *filename)
 						mod_curve.input = HomingOffsetCurveParameter::LIFETIME;
 					} else if (!stricmp(temp_type, NOX("PROXIMITY"))) {
 						mod_curve.input = HomingOffsetCurveParameter::PROXIMITY_TO_TARGET;
+					} else if (!stricmp(temp_type, NOX("TARGET RADIUS"))) {
+						mod_curve.input = HomingOffsetCurveParameter::TARGET_RADIUS;
 					} else if (!stricmp(temp_type, NOX("TRAVERSAL DISTANCE FROM CENTER"))) {
 						mod_curve.input = HomingOffsetCurveParameter::HOMING_TRAVERSAL_DISTANCE_FROM_CENTER;
 					} else {
-						Warning(LOCATION, "Unrecognized homing offset curve input '%s' for weapon %s!\n Valid inputs are: 'LIFETIME', 'PROXIMITY', 'TRAVERSAL DISTANCE FROM CENTER'.", temp_type, wip->name);
+						Warning(LOCATION, "Unrecognized homing offset curve input '%s' for weapon %s!\n Valid inputs are: 'LIFETIME', 'PROXIMITY', 'TARGET RADIUS', 'TRAVERSAL DISTANCE FROM CENTER'.", temp_type, wip->name);
 					}
 				required_string("+Output:");
 					stuff_string(temp_type, F_NAME, NAME_LENGTH);
@@ -1819,10 +1821,10 @@ int parse_weapon(int subtype, bool replace, const char *filename)
 						mod_curve.output = HomingOffsetCurveParameter::HOMING_TRAVERSAL_RECENTERING;
 					} else if (!stricmp(temp_type, NOX("AXIS CURVE RADIUS MULT"))) {
 						mod_curve.output = HomingOffsetCurveParameter::HOMING_AXIS_CURVE_RADIUS_MULT;
-					} else if (!stricmp(temp_type, NOX("OFFSET MAGNITUDE MULT"))) {
-						mod_curve.output = HomingOffsetCurveParameter::HOMING_OFFSET_MAGNITUDE_MULT;
+					} else if (!stricmp(temp_type, NOX("WHOLE OFFSET MAGNITUDE MULT"))) {
+						mod_curve.output = HomingOffsetCurveParameter::WHOLE_HOMING_OFFSET_MAGNITUDE_MULT;
 					} else {
-						Warning(LOCATION, "Unrecognized homing offset curve output '%s' for weapon %s!\n Valid inputs are: 'X OFFSET MULT', 'Y OFFSET MULT', 'Z OFFSET MULT', 'TRAVERSAL SPEED MULT',\n 'TRAVERSAL RADIUS MULT', 'TRAVERSAL RECENTERING', 'AXIS CURVE RADIUS MULT', 'OFFSET MAGNITUDE MULT'.", temp_type, wip->name);
+						Warning(LOCATION, "Unrecognized homing offset curve output '%s' for weapon %s!\n Valid inputs are: 'X OFFSET MULT', 'Y OFFSET MULT', 'Z OFFSET MULT', 'TRAVERSAL SPEED MULT',\n 'TRAVERSAL RADIUS MULT', 'TRAVERSAL RECENTERING', 'AXIS CURVE RADIUS MULT', 'WHOLE OFFSET MAGNITUDE MULT'.", temp_type, wip->name);
 					}
 				required_string("+Curve Name:");
 					SCP_string curve_name;
@@ -1838,6 +1840,7 @@ int parse_weapon(int subtype, bool replace, const char *filename)
 				} else {
 					mod_curve.translation = ::util::UniformFloatRange(0.0f);
 				}
+				wip->homing_offset_curves.push_back(mod_curve);
 			}
 		}
 
@@ -4831,6 +4834,9 @@ void weapon_delete(object *obj)
 	if (wp->swarm_info_ptr != nullptr)
 		wp->swarm_info_ptr.reset();
 
+	if (wp->homing_offset_info_ptr != nullptr)
+		wp->homing_offset_info_ptr.reset();
+
 	if(wp->cscrew_index >= 0) {
 		cscrew_delete(wp->cscrew_index);
 		wp->cscrew_index = -1;
@@ -5548,7 +5554,7 @@ void weapon_home(object *obj, int num, float frame_time)
 			}
 
 			if (wip->homing_pos_offset_radius > 0.0f) {
-					homing_offset_info* hiip = wp->homing_inaccuracy_info_ptr.get();
+					homing_offset_info* hiip = wp->homing_offset_info_ptr.get();
 
 					// proximity is a number between 0.0 and 1.0, with 0 being the weapon's full range and 1 being the target's position
 					float dist = vm_vec_dist(&obj->pos, &hobjp->pos)/MIN(wip->weapon_range, (wip->max_speed * wip->lifetime));
@@ -5574,7 +5580,7 @@ void weapon_home(object *obj, int num, float frame_time)
 
 					// we don't want the homing offset to get outside the radius when it's traversing
 					// so, the further it gets toward the radius, the more we rotate it toward the center, capping out at 90 degrees
-					float amount_to_rotate = vm_vec_dist(&hiip->homing_offset, &traversal_center)/(traversal_limit_radius);
+					float amount_to_rotate = vm_vec_dist(&hiip->base_homing_offset, &traversal_center)/(traversal_limit_radius);
 
 					CLAMP(amount_to_rotate, 0.0f, 1.0f);
 
@@ -5585,7 +5591,7 @@ void weapon_home(object *obj, int num, float frame_time)
 					float traversal_radius_mult = 1.0f;
 					float traversal_centering = amount_to_rotate;
 					float axis_curve_radius_mult = 1.0f;
-					float offset_magnitude_mult = 1.0f;
+					float whole_offset_magnitude_mult = 1.0f;
 
 					for (auto &mod_curve : wip->homing_offset_curves) {
 						float input = 1.0f;
@@ -5597,10 +5603,16 @@ void weapon_home(object *obj, int num, float frame_time)
 							case HomingOffsetCurveParameter::PROXIMITY_TO_TARGET:
 								input = 1.0f - dist;
 								break;
+							case HomingOffsetCurveParameter::TARGET_RADIUS:
+								input = hobjp->radius;
+								break;
 							case HomingOffsetCurveParameter::HOMING_TRAVERSAL_DISTANCE_FROM_CENTER:
 								input = amount_to_rotate;
+								break;
+							default:
+								continue;
 						}
-						input = std::fmod(std::fmod(input + mod_curve.translation.next(), 1.0f)/mod_curve.scaling_factor.next(), 1.0f);
+						//input = std::fmod(std::fmod(input + mod_curve.translation.next(), 1.0f)/mod_curve.scaling_factor.next(), 1.0f);
 						output = Curves[mod_curve.curve_idx].GetValue(input);
 						switch (mod_curve.output) {
 							case HomingOffsetCurveParameter::HOMING_X_OFFSET_MULT:
@@ -5624,9 +5636,11 @@ void weapon_home(object *obj, int num, float frame_time)
 							case HomingOffsetCurveParameter::HOMING_AXIS_CURVE_RADIUS_MULT:
 								axis_curve_radius_mult = output;
 								break;
-							case HomingOffsetCurveParameter::HOMING_OFFSET_MAGNITUDE_MULT:
-								offset_magnitude_mult = output;
+							case HomingOffsetCurveParameter::WHOLE_HOMING_OFFSET_MAGNITUDE_MULT:
+								whole_offset_magnitude_mult = output;
 								break;
+							default:
+								continue;
 						}
 					}
 
@@ -5635,18 +5649,18 @@ void weapon_home(object *obj, int num, float frame_time)
 					amount_to_rotate *= 0.5f;
 
 					vec3d toward_center;
-					vm_vec_normalized_dir(&toward_center, &traversal_center, &hiip->homing_offset);
+					vm_vec_normalized_dir(&toward_center, &traversal_center, &hiip->base_homing_offset);
 
 					vm_vec_slerp(&hiip->traversal_dir, &hiip->traversal_dir, &toward_center, amount_to_rotate);
 
 					float traversal_dist = wip->homing_offset_traversal_speed.next() * wip->homing_pos_offset_radius * traversal_speed_mult * flFrametime;
 
 					// traverse the offset point along the traversal direction
-					vm_vec_scale_add2(&hiip->homing_offset, &hiip->traversal_dir, traversal_dist);
+					vm_vec_scale_add2(&hiip->base_homing_offset, &hiip->traversal_dir, traversal_dist);
 
 					// get the offset we'll actually use by scaling by the various curves
-					// we don't store the curve-modified value in the homing_inaccuracy_info, because we want to be able to do our base calculations independently of proximity curves
-					vec3d homing_offset_curve_modified = hiip->homing_offset;
+					// we don't store the curve-modified value in the homing_inaccuracy_info, because we want to be able to do our base calculations independently of curves
+					vec3d homing_offset_curve_modified = hiip->base_homing_offset;
 
 					// if the axis curves are localized around the current homing offset, we add the axis curve offsets multiplied by the localized radius
 					// instead of multiplying the existing offsets by them.
@@ -5660,7 +5674,7 @@ void weapon_home(object *obj, int num, float frame_time)
 						homing_offset_curve_modified.xyz.z *= z_offset_mult;
 					}
 
-					homing_offset_curve_modified = hiip->homing_offset * offset_magnitude_mult;
+					homing_offset_curve_modified *= whole_offset_magnitude_mult;
 
 					// set the coordinates to the right reference frame
 					matrix offset_orientation;
@@ -5675,10 +5689,6 @@ void weapon_home(object *obj, int num, float frame_time)
 						case HomingOffsetOrientation::TARGET:
 							offset_orientation = hobjp->orient;
 							break;
-					}
-
-					if (wip->scale_by_target_radius) {
-						homing_offset_curve_modified *= hobjp->radius;
 					}
 
 					vm_vec_unrotate(&homing_offset_curve_modified, &homing_offset_curve_modified, &offset_orientation);
@@ -6744,15 +6754,15 @@ int weapon_create( const vec3d *pos, const matrix *porient, int weapon_type, int
 	} 	
 
 	if ( wip->homing_pos_offset_radius > 0.0f) {
-		wp->homing_inaccuracy_info_ptr.reset(new homing_offset_info);
-		homing_offset_info* hiip = wp->homing_inaccuracy_info_ptr.get();
+		wp->homing_offset_info_ptr.reset(new homing_offset_info);
+		homing_offset_info* hiip = wp->homing_offset_info_ptr.get();
 		hiip->weapon_initial_facing = Objects[wp->objnum].orient;
 		if (wip->randomize_homing_offset) {
-			vm_vec_random_in_sphere(&hiip->homing_offset, &vmd_zero_vector, wip->homing_pos_offset_radius, false);
+			vm_vec_random_in_sphere(&hiip->base_homing_offset, &vmd_zero_vector, wip->homing_pos_offset_radius, false);
 		} else {
-			hiip->homing_offset = vm_vec_new(wip->homing_pos_offset_radius, wip->homing_pos_offset_radius, wip->homing_pos_offset_radius);
+			hiip->base_homing_offset = vm_vec_new(wip->homing_pos_offset_radius, wip->homing_pos_offset_radius, wip->homing_pos_offset_radius);
 		}
-		hiip->initial_offset = hiip->homing_offset;
+		hiip->initial_offset = hiip->base_homing_offset;
 		vm_vec_random_in_sphere(&hiip->traversal_dir, &vmd_zero_vector, 1.0f, true);
 		hiip->traversal_radius = wip->homing_offset_traversal_local_radius.next();
 		hiip->axis_curve_radius = wip->homing_offset_axis_curve_local_radius.next();
@@ -9543,6 +9553,7 @@ void weapon_info::reset()
 	this->homing_offset_traversal_local_radius = ::util::UniformFloatRange(0.0f);
 	this->localize_homing_axis_curves = false;
 	this->homing_offset_axis_curve_local_radius = ::util::UniformFloatRange(0.0f);
+	this->homing_offset_orientation = HomingOffsetOrientation::WEAPON_INITIAL;
 	this->homing_offset_curves.clear();
 
 	this->pre_launch_snd = gamesnd_id();

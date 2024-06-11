@@ -85,7 +85,7 @@ constexpr int BANK_SWITCH_DELAY = 250;	// after switching banks, 1/4 second dela
 typedef struct homing_offset_info {
 	matrix weapon_initial_facing;
 	vec3d initial_offset;
-	vec3d homing_offset;
+	vec3d base_homing_offset;
 	vec3d traversal_dir;
 	float traversal_radius;
 	float axis_curve_radius;
@@ -97,10 +97,11 @@ enum class HomingOffsetOrientation {
 	TARGET
 };
 
-enum HomingOffsetCurveParameter {
+enum class HomingOffsetCurveParameter {
 	// inputs
 	LIFETIME,
 	PROXIMITY_TO_TARGET,
+	TARGET_RADIUS,
 	HOMING_TRAVERSAL_DISTANCE_FROM_CENTER,
 	// outputs
 	HOMING_X_OFFSET_MULT,
@@ -110,10 +111,10 @@ enum HomingOffsetCurveParameter {
 	HOMING_TRAVERSAL_RADIUS_MULT,
 	HOMING_TRAVERSAL_RECENTERING,
 	HOMING_AXIS_CURVE_RADIUS_MULT,
-	HOMING_OFFSET_MAGNITUDE_MULT,
+	WHOLE_HOMING_OFFSET_MAGNITUDE_MULT,
 };
 
-struct HomingOffsetModularCurve {
+typedef struct HomingOffsetModularCurve {
 public :
 	HomingOffsetCurveParameter input;
 	HomingOffsetCurveParameter output;
@@ -161,7 +162,7 @@ typedef struct weapon {
 	int		pick_big_attack_point_timestamp;	//	Timestamp at which to pick a new point to attack.
 	vec3d	big_attack_point;				//	Target-relative location of attack point.
 
-	std::unique_ptr<homing_offset_info>		homing_inaccuracy_info_ptr;
+	std::unique_ptr<homing_offset_info>		homing_offset_info_ptr;
 
 	SCP_vector<int>* cmeasure_ignore_list;
 	int		cmeasure_timer;
