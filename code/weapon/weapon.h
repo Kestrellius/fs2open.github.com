@@ -84,44 +84,11 @@ constexpr int BANK_SWITCH_DELAY = 250;	// after switching banks, 1/4 second dela
 
 typedef struct homing_offset_info {
 	matrix weapon_initial_facing;
-	vec3d initial_offset;
-	vec3d base_homing_offset;
+	float radius;
+	vec3d base_offset;
 	vec3d traversal_dir;
-	float traversal_radius;
-	float axis_curve_radius;
+	SCP_vector<std::tuple<float, float>> curve_factors;
 } homing_offset_info;
-
-enum class HomingOffsetOrientation {
-	WEAPON,
-	WEAPON_INITIAL,
-	TARGET
-};
-
-enum class HomingOffsetCurveParameter {
-	// inputs
-	LIFETIME,
-	PROXIMITY_TO_TARGET,
-	TARGET_RADIUS,
-	HOMING_TRAVERSAL_DISTANCE_FROM_CENTER,
-	// outputs
-	HOMING_X_OFFSET_MULT,
-	HOMING_Y_OFFSET_MULT,
-	HOMING_Z_OFFSET_MULT,
-	HOMING_TRAVERSAL_SPEED_MULT,
-	HOMING_TRAVERSAL_RADIUS_MULT,
-	HOMING_TRAVERSAL_RECENTERING,
-	HOMING_AXIS_CURVE_RADIUS_MULT,
-	WHOLE_HOMING_OFFSET_MAGNITUDE_MULT,
-};
-
-typedef struct HomingOffsetModularCurve {
-public :
-	HomingOffsetCurveParameter input;
-	HomingOffsetCurveParameter output;
-	int curve_idx;
-	::util::UniformFloatRange scaling_factor;
-	::util::UniformFloatRange translation;
-};
 
 typedef struct weapon {
 	int		weapon_info_index;			// index into weapon_info array
@@ -162,7 +129,7 @@ typedef struct weapon {
 	int		pick_big_attack_point_timestamp;	//	Timestamp at which to pick a new point to attack.
 	vec3d	big_attack_point;				//	Target-relative location of attack point.
 
-	std::unique_ptr<homing_offset_info>		homing_offset_info_ptr;
+	SCP_vector<homing_offset_info>	homing_offset_info;
 
 	SCP_vector<int>* cmeasure_ignore_list;
 	int		cmeasure_timer;
@@ -346,6 +313,47 @@ enum class HomingAcquisitionType {
 	RANDOM,
 };
 
+enum class HomingOffsetOrientation {
+	WEAPON,
+	WEAPON_INITIAL,
+	TARGET
+};
+
+enum class HomingOffsetCurveParameter {
+	// inputs
+	LIFETIME,
+	PROXIMITY_TO_TARGET,
+	TARGET_RADIUS,
+	TRAVERSAL_DISTANCE_FROM_CENTER,
+	// outputs
+	X_OFFSET_MULT,
+	Y_OFFSET_MULT,
+	Z_OFFSET_MULT,
+	TRAVERSAL_SPEED_MULT,
+	TRAVERSAL_RECENTERING,
+	OFFSET_MAGNITUDE_MULT,
+};
+
+struct HomingOffsetModularCurve {
+public :
+	HomingOffsetCurveParameter input;
+	HomingOffsetCurveParameter output;
+	int curve_idx;
+	::util::UniformFloatRange scaling_factor;
+	::util::UniformFloatRange translation;
+};
+
+typedef struct HomingOffsetEntry {
+	::util::UniformFloatRange radius;
+	bool randomize_offset;
+	::util::UniformFloatRange offset_traversal_speed;
+	float traversal_redirect_interval;
+	HomingOffsetOrientation homing_offset_orientation;
+	::util::UniformFloatRange axis_curve_scaling_factor;
+	::util::UniformFloatRange axis_curve_translation;
+	SCP_vector<HomingOffsetModularCurve> homing_offset_curves;
+} HomingOffsetEntry;
+
 struct weapon_info
 {
 	char	name[NAME_LENGTH];				// name of this weapon
@@ -495,18 +503,7 @@ struct weapon_info
 	// Seeker strength - for countermeasures overhaul.
 	float seeker_strength;
 
-	float homing_pos_offset_radius;
-	bool scale_by_target_radius;
-	bool randomize_homing_offset;
-	::util::UniformFloatRange homing_offset_traversal_speed;
-	float homing_offset_traversal_redirect_interval;
-	bool localize_homing_traversal;
-	::util::UniformFloatRange homing_offset_traversal_local_radius;
-	bool localize_homing_axis_curves;
-	::util::UniformFloatRange homing_offset_axis_curve_local_radius;
-	HomingOffsetOrientation homing_offset_orientation;
-	SCP_vector<HomingOffsetModularCurve> homing_offset_curves;
-
+	SCP_vector<HomingOffsetEntry> homing_offsets;
 
 	gamesnd_id pre_launch_snd;
 	int	pre_launch_snd_min_interval;	//Minimum interval in ms between the last time the pre-launch sound was played and the next time it can play, as a limiter in case the player is pumping the trigger
