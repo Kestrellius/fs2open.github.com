@@ -56,6 +56,8 @@ extern int Num_weapon_subtypes;
 #define LR_CURRENT_TARGET_SUBSYS		1		// 
 #define LR_ANY_TARGETS					2
 
+#define MAX_HOMING_OFFSETS				16
+
 // enum for multilock object type restriction
 enum class LR_Objecttypes { LRO_SHIPS, LRO_WEAPONS };
 
@@ -87,7 +89,7 @@ typedef struct homing_offset_info {
 	float radius;
 	vec3d base_offset;
 	vec3d traversal_dir;
-	SCP_vector<std::tuple<float, float>> curve_factors;
+	SCP_vector<std::pair<float, float>> curve_factors;
 } homing_offset_info;
 
 typedef struct weapon {
@@ -335,7 +337,6 @@ enum class HomingOffsetCurveParameter {
 };
 
 struct HomingOffsetModularCurve {
-public :
 	HomingOffsetCurveParameter input;
 	HomingOffsetCurveParameter output;
 	int curve_idx;

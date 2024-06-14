@@ -1751,17 +1751,22 @@ int parse_weapon(int subtype, bool replace, const char *filename)
 		}
 
 		while (optional_string("$Homing Offset:")) {
+
 			HomingOffsetEntry hoe;
 
 			required_string("+Radius:");
 			hoe.radius = ::util::parseUniformRange<float>();
 
+			hoe.randomize_offset = true;
 			parse_optional_bool_into("+Randomize Offset:", &hoe.randomize_offset);
 
 			if (optional_string("+Offset Random Traversal Speed:")) {
 				 hoe.offset_traversal_speed = ::util::parseUniformRange<float>();
+			} else {
+				hoe.offset_traversal_speed = ::util::UniformFloatRange(0.0f);
 			}
 
+			hoe.traversal_redirect_interval = 0.5f;
 			parse_optional_float_into("+Traversal Redirect Interval:", &hoe.traversal_redirect_interval);
 
 			if (optional_string("+Orientation:")) {
@@ -1776,8 +1781,22 @@ int parse_weapon(int subtype, bool replace, const char *filename)
 							hoe.homing_offset_orientation = HomingOffsetOrientation::TARGET;
 						}
 					else {
-						Warning(LOCATION, "Unrecognized homing offset orientation for weapon %s!\n Valid orentiations are: 'WEAPON', 'WEAPON INITIAL', 'TARGET'.", wip->name);
+						error_display(1, "Unrecognized homing offset orientation for weapon %s!\n Valid orentiations are: 'WEAPON', 'WEAPON INITIAL', 'TARGET'.", wip->name);
 					}
+			} else {
+				hoe.homing_offset_orientation = HomingOffsetOrientation::WEAPON;
+			}
+
+			if (optional_string("+Axis Curve Random Scaling Factor:")) {
+				hoe.axis_curve_scaling_factor = ::util::parseUniformRange<float>();
+			} else {
+				hoe.axis_curve_scaling_factor = ::util::UniformFloatRange(1.0f);
+			}
+
+			if (optional_string("+Axis Curve Random Translation:")) {
+				hoe.axis_curve_translation = ::util::parseUniformRange<float>();
+			} else {
+				hoe.axis_curve_translation = ::util::UniformFloatRange(0.0f);
 			}
 
 			while (optional_string("$Curve:")) {
@@ -1794,7 +1813,7 @@ int parse_weapon(int subtype, bool replace, const char *filename)
 					} else if (!stricmp(temp_type, NOX("TRAVERSAL DISTANCE FROM CENTER"))) {
 						mod_curve.input = HomingOffsetCurveParameter::TRAVERSAL_DISTANCE_FROM_CENTER;
 					} else {
-						Warning(LOCATION, "Unrecognized homing offset curve input '%s' for weapon %s!\n Valid inputs are: 'LIFETIME', 'PROXIMITY', 'TARGET RADIUS', 'TRAVERSAL DISTANCE FROM CENTER'.", temp_type, wip->name);
+						error_display(1, "Unrecognized homing offset curve input '%s' for weapon %s!\n Valid inputs are: 'LIFETIME', 'PROXIMITY', 'TARGET RADIUS', 'TRAVERSAL DISTANCE FROM CENTER'.", temp_type, wip->name);
 					}
 
 				required_string("+Output:");
@@ -1812,7 +1831,7 @@ int parse_weapon(int subtype, bool replace, const char *filename)
 					} else if (!stricmp(temp_type, NOX("OFFSET MAGNITUDE MULT"))) {
 						mod_curve.output = HomingOffsetCurveParameter::OFFSET_MAGNITUDE_MULT;
 					} else {
-						Warning(LOCATION, "Unrecognized homing offset curve output '%s' for weapon %s!\n Valid inputs are: 'X OFFSET MULT', 'Y OFFSET MULT', 'Z OFFSET MULT', 'TRAVERSAL SPEED MULT',\n'TRAVERSAL RECENTERING', 'OFFSET MAGNITUDE MULT'.", temp_type, wip->name);
+						error_display(1, "Unrecognized homing offset curve output '%s' for weapon %s!\n Valid inputs are: 'X OFFSET MULT', 'Y OFFSET MULT', 'Z OFFSET MULT', 'TRAVERSAL SPEED MULT',\n'TRAVERSAL RECENTERING', 'OFFSET MAGNITUDE MULT'.", temp_type, wip->name);
 					}
 
 				required_string("+Curve Name:");
@@ -5546,15 +5565,19 @@ void weapon_home(object *obj, int num, float frame_time)
 			}
 
 			for (int i = 0; i < wip->homing_offsets.size(); i++) {
-				HomingOffsetEntry* hoe = &wip->homing_offsets[i];
+				HomingOffsetEntry* hoep = &wip->homing_offsets[i];
 				homing_offset_info* hoip = &wp->homing_offset_info[i];
+
+				for (int cf = 0; cf < hoip->curve_factors.size(); cf++) {
+					mprintf(("Homing 1 with %s offset %i; scaling factor %f\n", wip->name, i, hoip->curve_factors[cf].first));
+				}
 
 				// proximity is a number between 0.0 and 1.0, with 0 being the weapon's full range and 1 being the target's position
 				float dist = vm_vec_dist(&obj->pos, &hobjp->pos)/MIN(wip->weapon_range, (wip->max_speed * wip->lifetime));
 				CLAMP(dist, 0.0f, 1.0f);
 
 				// switch to a new random traversal direction if it's time to do that
-				if (rand_chance(flFrametime, 1.0f/hoe->traversal_redirect_interval)) {
+				if (rand_chance(flFrametime, 1.0f/hoep->traversal_redirect_interval)) {
 					vm_vec_random_in_sphere(&hoip->traversal_dir, &vmd_zero_vector, 1.0f, true);
 				}
 
@@ -5571,7 +5594,8 @@ void weapon_home(object *obj, int num, float frame_time)
 				float traversal_centering = amount_to_rotate;
 				float offset_magnitude_mult = 1.0f;
 
-				for (auto &mod_curve : hoe->homing_offset_curves) {
+				for (int c = 0; c < hoep->homing_offset_curves.size(); c++) {
+					HomingOffsetModularCurve mod_curve = hoep->homing_offset_curves[c];
 					float input = 1.0f;
 					float output = 1.0f;
 					switch (mod_curve.input) {
@@ -5590,7 +5614,10 @@ void weapon_home(object *obj, int num, float frame_time)
 						default:
 							continue;
 					}
-					input = std::fmod(std::fmod(input + mod_curve.translation.next(), 1.0f)/mod_curve.scaling_factor.next(), 1.0f);
+					float scaling_factor = hoip->curve_factors[c].first;
+					float translation = hoip->curve_factors[c].second;
+					input = std::fmod(input / scaling_factor, 1.0f);
+					input = std::fmod(input + translation, 1.0f);
 					output = Curves[mod_curve.curve_idx].GetValue(input);
 					switch (mod_curve.output) {
 						case HomingOffsetCurveParameter::X_OFFSET_MULT:
@@ -5616,6 +5643,10 @@ void weapon_home(object *obj, int num, float frame_time)
 					}
 				}
 
+				for (int cf = 0; cf < hoip->curve_factors.size(); cf++) {
+					mprintf(("Homing 2 with %s offset %i; scaling factor %f\n", wip->name, i, hoip->curve_factors[cf].first));
+				}
+
 				amount_to_rotate = traversal_centering;
 
 				amount_to_rotate *= 0.5f;
@@ -5623,9 +5654,11 @@ void weapon_home(object *obj, int num, float frame_time)
 				vec3d toward_center;
 				vm_vec_normalized_dir(&toward_center, &vmd_zero_vector, &hoip->base_offset);
 
+				// we would expect traversal_dir to already be normalized, but floating-point inaccuracy might make it drift
+				vm_vec_normalize(&hoip->traversal_dir);
 				vm_vec_slerp(&hoip->traversal_dir, &hoip->traversal_dir, &toward_center, amount_to_rotate);
 
-				float traversal_dist = hoe->offset_traversal_speed.next() * traversal_speed_mult * flFrametime;
+				float traversal_dist = hoep->offset_traversal_speed.next() * traversal_speed_mult * flFrametime;
 
 				// traverse the offset point along the traversal direction
 				vm_vec_scale_add2(&hoip->base_offset, &hoip->traversal_dir, traversal_dist);
@@ -5646,7 +5679,7 @@ void weapon_home(object *obj, int num, float frame_time)
 				// set the coordinates to the right reference frame
 				matrix offset_orientation = hoip->weapon_initial_facing;
 
-				switch (hoe->homing_offset_orientation) {
+				switch (hoep->homing_offset_orientation) {
 					case HomingOffsetOrientation::WEAPON:
 						offset_orientation = obj->orient;
 						break;
@@ -6730,12 +6763,24 @@ int weapon_create( const vec3d *pos, const matrix *porient, int weapon_type, int
 			hoi.base_offset = vmd_scale_identity_vector;
 		}
 		vm_vec_random_in_sphere(&hoi.traversal_dir, &vmd_zero_vector, 1.0f, true);
-		for (auto mod_curve : hoe.homing_offset_curves) {
+		for (auto &mod_curve : hoe.homing_offset_curves) {
 			float scaling_factor = mod_curve.scaling_factor.next();
 			float translation = mod_curve.translation.next();
-			hoi.curve_factors.push_back(std::make_tuple(scaling_factor, translation));
+			float axis_scaling_factor = hoe.axis_curve_scaling_factor.next();
+			float axis_translation = hoe.axis_curve_translation.next();
+			mprintf(("Creating with %s offset; scaling factor %f\n", wip->name, hoe.axis_curve_scaling_factor));
+			if (mod_curve.output == HomingOffsetCurveParameter::X_OFFSET_MULT ||
+				mod_curve.output == HomingOffsetCurveParameter::Y_OFFSET_MULT ||
+				mod_curve.output == HomingOffsetCurveParameter::Z_OFFSET_MULT) {
+				scaling_factor *= axis_scaling_factor;
+				translation += axis_translation;
+				mprintf(("Stored scaling factor %f\n", scaling_factor));
+			};
+			hoi.curve_factors.emplace_back(scaling_factor, translation);
+			for (int cf = 0; cf < hoi.curve_factors.size(); cf++) {
+				mprintf(("%s offset %i scaling factor: %f", wip->name, cf, hoi.curve_factors[cf].first));
+			}
 		}
-		hoi.curve_factors.push_back(std::make_tuple(hoe.axis_curve_scaling_factor.next(), hoe.axis_curve_translation.next()));
 		wp->homing_offset_info.push_back(hoi);
 	}
 
@@ -9515,17 +9560,18 @@ void weapon_info::reset()
 	this->seeker_strength = 1.0f;
 	this->lock_fov = 0.85f;
 
-	for (i = 0; i < this->homing_offsets.size(); i++) {
-		HomingOffsetEntry* hoe = &this->homing_offsets[i];
-		hoe->radius = ::util::UniformFloatRange(0.0f);
-		hoe->randomize_offset = true;
-		hoe->offset_traversal_speed = ::util::UniformFloatRange(0.0f);
-		hoe->traversal_redirect_interval = 10.0f;
-		hoe->homing_offset_orientation = HomingOffsetOrientation::WEAPON_INITIAL;
-		hoe->axis_curve_scaling_factor = ::util::UniformFloatRange(1.0f);
-		hoe->axis_curve_translation = ::util::UniformFloatRange(0.0f);
-		hoe->homing_offset_curves.clear();
-	}
+	//for (i = 0; i < MAX_HOMING_OFFSETS; i++) {
+	//	HomingOffsetEntry hoe;
+	//	hoe.radius = ::util::UniformFloatRange(0.0f);
+	//	hoe.randomize_offset = true;
+	//	hoe.offset_traversal_speed = ::util::UniformFloatRange(0.0f);
+	//	hoe.traversal_redirect_interval = 10.0f;
+	//	hoe.homing_offset_orientation = HomingOffsetOrientation::WEAPON_INITIAL;
+	//	hoe.axis_curve_scaling_factor = ::util::UniformFloatRange(1.0f);
+	//	hoe.axis_curve_translation = ::util::UniformFloatRange(0.0f);
+	//	hoe.homing_offset_curves.clear();
+	//	this->homing_offsets.push_back(hoe);
+	//}
 
 	this->pre_launch_snd = gamesnd_id();
 	this->pre_launch_snd_min_interval = 0;
