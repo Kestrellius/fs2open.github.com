@@ -104,6 +104,7 @@ typedef struct homing_offset_info {
 	float radius;
 	vec3d base_offset;
 	vec3d traversal_dir;
+	SCP_vector<vec3d> base_rotation;
 	SCP_vector<std::pair<float, float>> curve_factors;
 } homing_offset_info;
 
@@ -370,13 +371,21 @@ enum class HomingOffsetOrientation {
 	TARGET
 };
 
-enum class HomingOffsetCurveParameter {
+enum class HomingOffsetCurveInput {
 	// inputs
 	LIFETIME,
-	PROXIMITY_TO_TARGET,
+	PROXIMITY,
+	DISTANCE,
+	DISTANCE_TIMES_TARGET_RADIUS,
 	TARGET_RADIUS,
 	TRAVERSAL_DISTANCE_FROM_CENTER,
+};
+
+enum class HomingOffsetCurveOutput {
 	// outputs
+	X_ROT_MULT,
+	Y_ROT_MULT,
+	Z_ROT_MULT,
 	X_OFFSET_MULT,
 	Y_OFFSET_MULT,
 	Z_OFFSET_MULT,
@@ -386,11 +395,12 @@ enum class HomingOffsetCurveParameter {
 };
 
 struct HomingOffsetModularCurve {
-	HomingOffsetCurveParameter input;
-	HomingOffsetCurveParameter output;
+	HomingOffsetCurveInput input;
+	HomingOffsetCurveOutput output;
 	int curve_idx;
 	::util::UniformFloatRange scaling_factor;
 	::util::UniformFloatRange translation;
+	bool wraparound;
 };
 
 typedef struct HomingOffsetEntry {
@@ -399,8 +409,12 @@ typedef struct HomingOffsetEntry {
 	::util::UniformFloatRange offset_traversal_speed;
 	float traversal_redirect_interval;
 	HomingOffsetOrientation homing_offset_orientation;
+	::util::UniformFloatRange x_rotation;
+	::util::UniformFloatRange y_rotation;
+	::util::UniformFloatRange z_rotation;
 	::util::UniformFloatRange axis_curve_scaling_factor;
 	::util::UniformFloatRange axis_curve_translation;
+	bool rotation_first;
 	SCP_vector<HomingOffsetModularCurve> homing_offset_curves;
 } HomingOffsetEntry;
 
