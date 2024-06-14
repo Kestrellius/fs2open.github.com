@@ -2958,7 +2958,7 @@ void vm_vec_slerp(vec3d* out, const vec3d* src1, const vec3d* src2, float t, con
     float cos_theta = vm_vec_dot(src1, src2);
 
     vec3d actual_uvec;
-	if (cos_theta >= -0.99f && cos_theta <= 0.99f) {
+	if (cos_theta >= -0.999f && cos_theta <= 0.999f) {
         vm_vec_cross(&actual_uvec, src1, src2);
     }
     else if (uvec != nullptr) {
@@ -2970,12 +2970,13 @@ void vm_vec_slerp(vec3d* out, const vec3d* src1, const vec3d* src2, float t, con
 		do {
 			vm_vec_random_in_sphere(&random, &vmd_zero_vector, 1, true);
 			dot_random = vm_vec_dot(&random, src2);
-		} while (dot_random >= -0.99f && dot_random <= 0.99f);
+		} while (dot_random <= -0.999f || dot_random >= 0.999f);
 		vm_vec_cross(&actual_uvec, &random, src2);
     }
 
 	vm_vec_normalize(&actual_uvec);
 
+	CLAMP(cos_theta, -1.0f, 1.0f);
     matrix rot;
     vm_quaternion_rotate(&rot, acos(cos_theta) * t, &actual_uvec);
 
