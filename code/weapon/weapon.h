@@ -89,7 +89,7 @@ typedef struct homing_offset_info {
 	float radius;
 	vec3d base_offset;
 	vec3d traversal_dir;
-	SCP_vector<vec3d> base_rotation;
+	SCP_vector<vec3d> base_rotations;
 	SCP_vector<std::pair<float, float>> curve_factors;
 } homing_offset_info;
 
