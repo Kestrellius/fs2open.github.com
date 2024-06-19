@@ -1827,6 +1827,24 @@ int parse_weapon(int subtype, bool replace, const char *filename)
 				hoe.homing_offset_orientation = HomingOffsetOrientation::WEAPON;
 			}
 
+			if (optional_string("+X Rotation:")) {
+				hoe.x_rotation = ::util::parseUniformRange<float>();
+			} else {
+				hoe.x_rotation = ::util::UniformFloatRange(0.0f);
+			}
+
+			if (optional_string("+Y Rotation:")) {
+				hoe.y_rotation = ::util::parseUniformRange<float>();
+			} else {
+				hoe.y_rotation = ::util::UniformFloatRange(0.0f);
+			}
+
+			if (optional_string("+Z Rotation:")) {
+				hoe.z_rotation = ::util::parseUniformRange<float>();
+			} else {
+				hoe.z_rotation = ::util::UniformFloatRange(0.0f);
+			}
+
 			if (optional_string("+Axis Curve Random Scaling Factor:")) {
 				hoe.axis_curve_scaling_factor = ::util::parseUniformRange<float>();
 			} else {
@@ -1853,7 +1871,7 @@ int parse_weapon(int subtype, bool replace, const char *filename)
 						mod_curve.input = HomingOffsetCurveInput::PROXIMITY;
 					} else if (!stricmp(temp_type, NOX("DISTANCE FROM TARGET"))) {
 						mod_curve.input = HomingOffsetCurveInput::DISTANCE;
-					} else if (!stricmp(temp_type, NOX("DISTANCE FROM TARGET TIMES TARGET RADIUS"))) {
+					} else if (!stricmp(temp_type, NOX("DISTANCE TIMES TARGET RADIUS"))) {
 						mod_curve.input = HomingOffsetCurveInput::DISTANCE_TIMES_TARGET_RADIUS;
 					} else if (!stricmp(temp_type, NOX("TARGET RADIUS"))) {
 						mod_curve.input = HomingOffsetCurveInput::TARGET_RADIUS;
@@ -5776,6 +5794,12 @@ void weapon_home(object *obj, int num, float frame_time)
 
 				for (int c = 0; c < hoep->homing_offset_curves.size(); c++) {
 					HomingOffsetModularCurve* mod_curve = &hoep->homing_offset_curves[c];
+					if (mod_curve->curve_idx < 0) {
+						Warning(LOCATION, "Curve does not exist!");
+						continue;
+					}
+
+					Curve curve = Curves[mod_curve->curve_idx];
 					float input = 1.0f;
 					float output = 1.0f;
 					switch (mod_curve->input) {
@@ -5789,7 +5813,7 @@ void weapon_home(object *obj, int num, float frame_time)
 							input = dist;
 							break;
 						case HomingOffsetCurveInput::DISTANCE_TIMES_TARGET_RADIUS:
-							input = dist * hobjp->radius;
+							input = dist / hobjp->radius;
 							break;
 						case HomingOffsetCurveInput::TARGET_RADIUS:
 							input = hobjp->radius;
@@ -5804,36 +5828,37 @@ void weapon_home(object *obj, int num, float frame_time)
 					float translation = hoip->curve_factors[c].second;
 					input = (input / scaling_factor) + translation;
 					if (mod_curve->wraparound) {
-						input = std::fmod(input, 1.0f);
+						float final_x = curve.keyframes.back().pos.x;
+						input = std::fmod(input, final_x);
 					}
-					output = Curves[mod_curve->curve_idx].GetValue(input);
+					output = curve.GetValue(input);
 					switch (mod_curve->output) {
 						case HomingOffsetCurveOutput::X_ROT_MULT:
-							x_rot_mult = output;
+							x_rot_mult *= output;
 							break;
 						case HomingOffsetCurveOutput::Y_ROT_MULT:
-							x_rot_mult = output;
+							x_rot_mult *= output;
 							break;
 						case HomingOffsetCurveOutput::Z_ROT_MULT:
-							x_rot_mult = output;
+							x_rot_mult *= output;
 							break;
 						case HomingOffsetCurveOutput::X_OFFSET_MULT:
-							x_offset_mult = output;
+							x_offset_mult *= output;
 							break;
 						case HomingOffsetCurveOutput::Y_OFFSET_MULT:
-							y_offset_mult = output;
+							y_offset_mult *= output;
 							break;
 						case HomingOffsetCurveOutput::Z_OFFSET_MULT:
-							z_offset_mult = output;
+							z_offset_mult *= output;
 							break;
 						case HomingOffsetCurveOutput::TRAVERSAL_SPEED_MULT:
-							traversal_speed_mult = output;
+							traversal_speed_mult *= output;
 							break;
 						case HomingOffsetCurveOutput::TRAVERSAL_RECENTERING:
 							traversal_centering = output;
 							break;
 						case HomingOffsetCurveOutput::OFFSET_MAGNITUDE_MULT:
-							offset_magnitude_mult = output;
+							offset_magnitude_mult *= output;
 							break;
 						default:
 							continue;
@@ -5848,6 +5873,7 @@ void weapon_home(object *obj, int num, float frame_time)
 				vm_vec_normalized_dir(&toward_center, &vmd_zero_vector, &hoip->base_offset);
 
 				// we would expect traversal_dir to already be normalized, but floating-point inaccuracy might make it drift
+				// so we re-normalize it right before the slerp, since that needs everything normalized
 				vm_vec_normalize(&hoip->traversal_dir);
 				vm_vec_slerp(&hoip->traversal_dir, &hoip->traversal_dir, &toward_center, amount_to_rotate);
 
@@ -5862,16 +5888,15 @@ void weapon_home(object *obj, int num, float frame_time)
 
 				// there's utility in applying the curves either before or after the rotation, so we do either one depending on configuration
 				if (hoep->rotation_first) {
-					float x_rot = hoip->base_rotations[i].xyz.x * x_rot_mult;
-					float y_rot = hoip->base_rotations[i].xyz.y * y_rot_mult;
-					float z_rot = hoip->base_rotations[i].xyz.z * z_rot_mult;
+					float x_rot = flFrametime * hoip->base_rotations[i].xyz.x * x_rot_mult;
+					float y_rot = flFrametime * hoip->base_rotations[i].xyz.y * y_rot_mult;
+					float z_rot = flFrametime * hoip->base_rotations[i].xyz.z * z_rot_mult;
 					vm_rot_point_around_line(&homing_offset_modified, &homing_offset_modified, x_rot, &vmd_zero_vector, &vmd_x_vector);
 					vm_rot_point_around_line(&homing_offset_modified, &homing_offset_modified, y_rot, &vmd_zero_vector, &vmd_y_vector);
 					vm_rot_point_around_line(&homing_offset_modified, &homing_offset_modified, z_rot, &vmd_zero_vector, &vmd_z_vector);
 
 					// after doing all our calculations with the unit sphere, we finally apply our radius, along with the curve multiplier
 					homing_offset_modified *= hoip->radius * offset_magnitude_mult;
-
 					// if the axis curves are localized around the current homing offset, we add the axis curve offsets multiplied by the localized radius
 					// instead of multiplying the existing offsets by them.
 					homing_offset_modified.xyz.x *= x_offset_mult;
@@ -5880,16 +5905,15 @@ void weapon_home(object *obj, int num, float frame_time)
 				} else {
 					// after doing all our calculations with the unit sphere, we finally apply our radius, along with the curve multiplier
 					homing_offset_modified *= hoip->radius * offset_magnitude_mult;
-
 					// if the axis curves are localized around the current homing offset, we add the axis curve offsets multiplied by the localized radius
 					// instead of multiplying the existing offsets by them.
 					homing_offset_modified.xyz.x *= x_offset_mult;
 					homing_offset_modified.xyz.y *= y_offset_mult;
 					homing_offset_modified.xyz.z *= z_offset_mult;
 
-					float x_rot = hoip->base_rotations[i].xyz.x * x_rot_mult;
-					float y_rot = hoip->base_rotations[i].xyz.y * y_rot_mult;
-					float z_rot = hoip->base_rotations[i].xyz.z * z_rot_mult;
+					float x_rot = flFrametime * hoip->base_rotations[i].xyz.x * x_rot_mult;
+					float y_rot = flFrametime * hoip->base_rotations[i].xyz.y * y_rot_mult;
+					float z_rot = flFrametime * hoip->base_rotations[i].xyz.z * z_rot_mult;
 					vm_rot_point_around_line(&homing_offset_modified, &homing_offset_modified, x_rot, &vmd_zero_vector, &vmd_x_vector);
 					vm_rot_point_around_line(&homing_offset_modified, &homing_offset_modified, y_rot, &vmd_zero_vector, &vmd_y_vector);
 					vm_rot_point_around_line(&homing_offset_modified, &homing_offset_modified, z_rot, &vmd_zero_vector, &vmd_z_vector);
@@ -6987,18 +7011,21 @@ int weapon_create( const vec3d *pos, const matrix *porient, int weapon_type, int
 		homing_offset_info hoi;
 		hoi.weapon_initial_facing = Objects[wp->objnum].orient;
 		hoi.radius = hoe.radius.next();
+
 		if (hoe.randomize_offset) {
 			vm_vec_random_in_sphere(&hoi.base_offset, &vmd_zero_vector, 1.0f, false);
 		} else {
 			hoi.base_offset = vmd_scale_identity_vector;
 		}
-		vm_vec_random_in_sphere(&hoi.traversal_dir, &vmd_zero_vector, 1.0f, true);
-		for (auto &mod_curve : hoe.homing_offset_curves) {
-			float x_rot = hoe.x_rotation.next();
-			float y_rot = hoe.y_rotation.next();
-			float z_rot = hoe.z_rotation.next();
-			hoi.curve_factors.emplace_back(x_rot, y_rot, z_rot);
 
+		vm_vec_random_in_sphere(&hoi.traversal_dir, &vmd_zero_vector, 1.0f, true);
+
+		float x_rot = hoe.x_rotation.next();
+		float y_rot = hoe.y_rotation.next();
+		float z_rot = hoe.z_rotation.next();
+		hoi.base_rotations.push_back({ { { x_rot, y_rot, z_rot } } });
+
+		for (auto &mod_curve : hoe.homing_offset_curves) {
 			float scaling_factor = mod_curve.scaling_factor.next();
 			float translation = mod_curve.translation.next();
 			float axis_scaling_factor = hoe.axis_curve_scaling_factor.next();
