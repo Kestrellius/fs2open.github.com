@@ -1828,19 +1828,19 @@ int parse_weapon(int subtype, bool replace, const char *filename)
 			}
 
 			if (optional_string("+X Rotation:")) {
-				hoe.x_rotation = ::util::parseUniformRange<float>();
+				hoe.x_rotation = ::util::parseUniformRange<float>(std::numeric_limits<float>::lowest());
 			} else {
 				hoe.x_rotation = ::util::UniformFloatRange(0.0f);
 			}
 
 			if (optional_string("+Y Rotation:")) {
-				hoe.y_rotation = ::util::parseUniformRange<float>();
+				hoe.y_rotation = ::util::parseUniformRange<float>(std::numeric_limits<float>::lowest());
 			} else {
 				hoe.y_rotation = ::util::UniformFloatRange(0.0f);
 			}
 
 			if (optional_string("+Z Rotation:")) {
-				hoe.z_rotation = ::util::parseUniformRange<float>();
+				hoe.z_rotation = ::util::parseUniformRange<float>(std::numeric_limits<float>::lowest());
 			} else {
 				hoe.z_rotation = ::util::UniformFloatRange(0.0f);
 			}
@@ -5888,12 +5888,15 @@ void weapon_home(object *obj, int num, float frame_time)
 
 				// there's utility in applying the curves either before or after the rotation, so we do either one depending on configuration
 				if (hoep->rotation_first) {
-					float x_rot = flFrametime * hoip->base_rotations[i].xyz.x * x_rot_mult;
-					float y_rot = flFrametime * hoip->base_rotations[i].xyz.y * y_rot_mult;
-					float z_rot = flFrametime * hoip->base_rotations[i].xyz.z * z_rot_mult;
-					vm_rot_point_around_line(&homing_offset_modified, &homing_offset_modified, x_rot, &vmd_zero_vector, &vmd_x_vector);
-					vm_rot_point_around_line(&homing_offset_modified, &homing_offset_modified, y_rot, &vmd_zero_vector, &vmd_y_vector);
-					vm_rot_point_around_line(&homing_offset_modified, &homing_offset_modified, z_rot, &vmd_zero_vector, &vmd_z_vector);
+					float life = wip->lifetime - wp->lifeleft;
+
+					angles mod_ang{x_rot_mult, z_rot_mult, y_rot_mult};
+					mod_ang *= hoip->base_rotations[i] * life;
+
+
+					matrix rot_matrix;
+					vm_angles_2_matrix(&rot_matrix, &mod_ang);
+					vm_vec_unrotate(&homing_offset_modified, &homing_offset_modified, &rot_matrix);
 
 					// after doing all our calculations with the unit sphere, we finally apply our radius, along with the curve multiplier
 					homing_offset_modified *= hoip->radius * offset_magnitude_mult;
@@ -5911,12 +5914,14 @@ void weapon_home(object *obj, int num, float frame_time)
 					homing_offset_modified.xyz.y *= y_offset_mult;
 					homing_offset_modified.xyz.z *= z_offset_mult;
 
-					float x_rot = flFrametime * hoip->base_rotations[i].xyz.x * x_rot_mult;
-					float y_rot = flFrametime * hoip->base_rotations[i].xyz.y * y_rot_mult;
-					float z_rot = flFrametime * hoip->base_rotations[i].xyz.z * z_rot_mult;
-					vm_rot_point_around_line(&homing_offset_modified, &homing_offset_modified, x_rot, &vmd_zero_vector, &vmd_x_vector);
-					vm_rot_point_around_line(&homing_offset_modified, &homing_offset_modified, y_rot, &vmd_zero_vector, &vmd_y_vector);
-					vm_rot_point_around_line(&homing_offset_modified, &homing_offset_modified, z_rot, &vmd_zero_vector, &vmd_z_vector);
+					float life = wip->lifetime - wp->lifeleft;
+
+					angles mod_ang{x_rot_mult, z_rot_mult, y_rot_mult};
+					mod_ang *= hoip->base_rotations[i] * life;
+
+					matrix rot_matrix;
+					vm_angles_2_matrix(&rot_matrix, &mod_ang);
+					vm_vec_unrotate(&homing_offset_modified, &homing_offset_modified, &rot_matrix);
 				}
 				
 
@@ -7020,10 +7025,14 @@ int weapon_create( const vec3d *pos, const matrix *porient, int weapon_type, int
 
 		vm_vec_random_in_sphere(&hoi.traversal_dir, &vmd_zero_vector, 1.0f, true);
 
-		float x_rot = hoe.x_rotation.next();
-		float y_rot = hoe.y_rotation.next();
-		float z_rot = hoe.z_rotation.next();
-		hoi.base_rotations.push_back({ { { x_rot, y_rot, z_rot } } });
+		float x_rot = fl_radians(hoe.x_rotation.next());
+		float y_rot = fl_radians(hoe.y_rotation.next());
+		float z_rot = fl_radians(hoe.z_rotation.next());
+		angles ang;
+		ang.p = x_rot;
+		ang.b = z_rot;
+		ang.h = y_rot;
+		hoi.base_rotations.push_back(ang);
 
 		for (auto &mod_curve : hoe.homing_offset_curves) {
 			float scaling_factor = mod_curve.scaling_factor.next();

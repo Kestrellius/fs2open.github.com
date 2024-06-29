@@ -730,6 +730,40 @@ inline angles& operator+=(angles& left, const angles& right)
 	return left;
 }
 
+inline angles& operator*=(angles& left, const angles& right)
+{
+	left.p *= right.p;
+	left.b *= right.b;
+	left.h *= right.h;
+	return left;
+}
+
+inline angles& operator*=(angles& left, const float& right)
+{
+	left.p *= right;
+	left.b *= right;
+	left.h *= right;
+	return left;
+}
+
+inline angles operator+(angles left, const angles& right)
+{
+	left += right;
+	return left;
+}
+
+inline angles operator*(angles left, const angles& right)
+{
+	left *= right;
+	return left;
+}
+
+inline angles operator*(angles left, const float& right)
+{
+	left *= right;
+	return left;
+}
+
 /**
  * @brief Implements matrix multiplication on 3D vectors
  * @param left The matrix
