@@ -1902,7 +1902,7 @@ int parse_weapon(int subtype, bool replace, const char *filename)
 					} else if (!stricmp(temp_type, NOX("OFFSET MAGNITUDE MULT"))) {
 						mod_curve.output = HomingOffsetCurveOutput::OFFSET_MAGNITUDE_MULT;
 					} else {
-						error_display(1, "Unrecognized homing offset curve output '%s' for weapon %s!\n Valid inputs are: 'X OFFSET MULT', 'Y OFFSET MULT', 'Z OFFSET MULT', 'TRAVERSAL SPEED MULT',\n'TRAVERSAL RECENTERING', 'OFFSET MAGNITUDE MULT'.", temp_type, wip->name);
+						error_display(1, "Unrecognized homing offset curve output '%s' for weapon %s!\n Valid inputs are: 'X ROTATION SPEED MULT', 'Y ROTATION SPEED MULT', 'Z ROTATION SPEED MULT', 'X OFFSET MULT', 'Y OFFSET MULT', 'Z OFFSET MULT', 'TRAVERSAL SPEED MULT',\n'TRAVERSAL RECENTERING', 'OFFSET MAGNITUDE MULT'.", temp_type, wip->name);
 					}
 
 				required_string("+Curve Name:");
@@ -5782,9 +5782,12 @@ void weapon_home(object *obj, int num, float frame_time)
 				float proximity = 1.0f - dist_normalized;
 
 				// set up the base value of the multipliers we'll be modifying with the curves
-				float x_rot_mult = 1.0f;
-				float y_rot_mult = 1.0f;
-				float z_rot_mult = 1.0f;
+				bool x_rot_mod = false;
+				bool y_rot_mod = false;
+				bool z_rot_mod = false;
+				float x_rot = 1.0f;
+				float y_rot = 1.0f;
+				float z_rot = 1.0f;
 				float x_offset_mult = 1.0f;
 				float y_offset_mult = 1.0f;
 				float z_offset_mult = 1.0f;
@@ -5834,13 +5837,16 @@ void weapon_home(object *obj, int num, float frame_time)
 					output = curve.GetValue(input);
 					switch (mod_curve->output) {
 						case HomingOffsetCurveOutput::X_ROT_MULT:
-							x_rot_mult *= output;
+							x_rot *= output;
+							x_rot_mod = true;
 							break;
 						case HomingOffsetCurveOutput::Y_ROT_MULT:
-							x_rot_mult *= output;
+							y_rot *= output;
+							y_rot_mod = true;
 							break;
 						case HomingOffsetCurveOutput::Z_ROT_MULT:
-							x_rot_mult *= output;
+							z_rot *= output;
+							z_rot_mod = true;
 							break;
 						case HomingOffsetCurveOutput::X_OFFSET_MULT:
 							x_offset_mult *= output;
@@ -5886,16 +5892,31 @@ void weapon_home(object *obj, int num, float frame_time)
 				// we don't store the curve-modified value in the homing_inaccuracy_info, because we want to be able to do our base calculations independently of curves
 				vec3d homing_offset_modified = hoip->base_offset;
 
+				float life = f2fl(Missiontime - wp->creation_time);
+
+				angles rot_ang;
+
+				if (x_rot_mod) {
+					rot_ang.p = x_rot * hoip->base_rotations[i].p * wip->lifetime;
+				} else {
+					rot_ang.p = hoip->base_rotations[i].p * life;
+				}
+				if (y_rot_mod) {
+					rot_ang.h = y_rot * hoip->base_rotations[i].h * wip->lifetime;
+				} else {
+					rot_ang.h = hoip->base_rotations[i].h * life;
+				}
+				if (z_rot_mod) {
+					rot_ang.b = z_rot * hoip->base_rotations[i].b * wip->lifetime;
+				} else {
+					rot_ang.b = hoip->base_rotations[i].b * life;
+				}
+
+				matrix rot_matrix;
+				vm_angles_2_matrix(&rot_matrix, &rot_ang);
+
 				// there's utility in applying the curves either before or after the rotation, so we do either one depending on configuration
 				if (hoep->rotation_first) {
-					float life = wip->lifetime - wp->lifeleft;
-
-					angles mod_ang{x_rot_mult, z_rot_mult, y_rot_mult};
-					mod_ang *= hoip->base_rotations[i] * life;
-
-
-					matrix rot_matrix;
-					vm_angles_2_matrix(&rot_matrix, &mod_ang);
 					vm_vec_unrotate(&homing_offset_modified, &homing_offset_modified, &rot_matrix);
 
 					// after doing all our calculations with the unit sphere, we finally apply our radius, along with the curve multiplier
@@ -5914,13 +5935,6 @@ void weapon_home(object *obj, int num, float frame_time)
 					homing_offset_modified.xyz.y *= y_offset_mult;
 					homing_offset_modified.xyz.z *= z_offset_mult;
 
-					float life = wip->lifetime - wp->lifeleft;
-
-					angles mod_ang{x_rot_mult, z_rot_mult, y_rot_mult};
-					mod_ang *= hoip->base_rotations[i] * life;
-
-					matrix rot_matrix;
-					vm_angles_2_matrix(&rot_matrix, &mod_ang);
 					vm_vec_unrotate(&homing_offset_modified, &homing_offset_modified, &rot_matrix);
 				}
 				
