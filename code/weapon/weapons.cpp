@@ -5782,12 +5782,9 @@ void weapon_home(object *obj, int num, float frame_time)
 				float proximity = 1.0f - dist_normalized;
 
 				// set up the base value of the multipliers we'll be modifying with the curves
-				bool x_rot_mod = false;
-				bool y_rot_mod = false;
-				bool z_rot_mod = false;
-				float x_rot = 1.0f;
-				float y_rot = 1.0f;
-				float z_rot = 1.0f;
+				float x_rot_mult = 1.0f;
+				float y_rot_mult = 1.0f;
+				float z_rot_mult = 1.0f;
 				float x_offset_mult = 1.0f;
 				float y_offset_mult = 1.0f;
 				float z_offset_mult = 1.0f;
@@ -5837,16 +5834,13 @@ void weapon_home(object *obj, int num, float frame_time)
 					output = curve.GetValue(input);
 					switch (mod_curve->output) {
 						case HomingOffsetCurveOutput::X_ROT_MULT:
-							x_rot *= output;
-							x_rot_mod = true;
+							x_rot_mult *= output;
 							break;
 						case HomingOffsetCurveOutput::Y_ROT_MULT:
-							y_rot *= output;
-							y_rot_mod = true;
+							y_rot_mult *= output;
 							break;
 						case HomingOffsetCurveOutput::Z_ROT_MULT:
-							z_rot *= output;
-							z_rot_mod = true;
+							z_rot_mult *= output;
 							break;
 						case HomingOffsetCurveOutput::X_OFFSET_MULT:
 							x_offset_mult *= output;
@@ -5892,28 +5886,12 @@ void weapon_home(object *obj, int num, float frame_time)
 				// we don't store the curve-modified value in the homing_inaccuracy_info, because we want to be able to do our base calculations independently of curves
 				vec3d homing_offset_modified = hoip->base_offset;
 
-				float life = f2fl(Missiontime - wp->creation_time);
-
-				angles rot_ang;
-
-				if (x_rot_mod) {
-					rot_ang.p = x_rot * hoip->base_rotations[i].p * wip->lifetime;
-				} else {
-					rot_ang.p = hoip->base_rotations[i].p * life;
-				}
-				if (y_rot_mod) {
-					rot_ang.h = y_rot * hoip->base_rotations[i].h * wip->lifetime;
-				} else {
-					rot_ang.h = hoip->base_rotations[i].h * life;
-				}
-				if (z_rot_mod) {
-					rot_ang.b = z_rot * hoip->base_rotations[i].b * wip->lifetime;
-				} else {
-					rot_ang.b = hoip->base_rotations[i].b * life;
-				}
+				hoip->rotation_state.p += hoip->base_rotations.p * x_rot_mult * flFrametime;
+				hoip->rotation_state.h += hoip->base_rotations.h * y_rot_mult * flFrametime;
+				hoip->rotation_state.b += hoip->base_rotations.b * z_rot_mult * flFrametime;
 
 				matrix rot_matrix;
-				vm_angles_2_matrix(&rot_matrix, &rot_ang);
+				vm_angles_2_matrix(&rot_matrix, &hoip->rotation_state);
 
 				// there's utility in applying the curves either before or after the rotation, so we do either one depending on configuration
 				if (hoep->rotation_first) {
@@ -7042,11 +7020,12 @@ int weapon_create( const vec3d *pos, const matrix *porient, int weapon_type, int
 		float x_rot = fl_radians(hoe.x_rotation.next());
 		float y_rot = fl_radians(hoe.y_rotation.next());
 		float z_rot = fl_radians(hoe.z_rotation.next());
-		angles ang;
-		ang.p = x_rot;
-		ang.b = z_rot;
-		ang.h = y_rot;
-		hoi.base_rotations.push_back(ang);
+		hoi.base_rotations.p = x_rot;
+		hoi.base_rotations.h = y_rot;
+		hoi.base_rotations.b = z_rot;
+		hoi.rotation_state.p = 0.0f;
+		hoi.rotation_state.h = 0.0f;
+		hoi.rotation_state.b = 0.0f;
 
 		for (auto &mod_curve : hoe.homing_offset_curves) {
 			float scaling_factor = mod_curve.scaling_factor.next();
