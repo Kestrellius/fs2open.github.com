@@ -964,7 +964,6 @@ int parse_weapon(int subtype, bool replace, const char *filename)
 		wip = &Weapon_info.back();
 		first_time = true;
 
-
 		strcpy_s(wip->name, fname);
 
 		// if this name has a hash, create a default display name

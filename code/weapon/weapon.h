@@ -62,6 +62,8 @@ extern int Num_weapon_subtypes;
 
 #define MAX_HOMING_OFFSETS				16
 
+#define MAX_HOMING_OFFSETS				16
+
 // enum for multilock object type restriction
 enum class LR_Objecttypes { LRO_SHIPS, LRO_WEAPONS };
 
